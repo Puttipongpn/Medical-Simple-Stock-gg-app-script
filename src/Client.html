@@ -1,0 +1,166 @@
+<script>
+(function () {
+  'use strict';
+  var byId = function (id) { return document.getElementById(id); };
+  var credential = byId('team-code');
+  var requestKey = 'medical-stock.phase0.request-id';
+  var requestId = null;
+  var confirmed = false;
+  var busy = false;
+  var sequence = 0;
+  try { requestId = sessionStorage.getItem(requestKey); } catch (ignored) { /* Read-only checks still work. */ }
+  if (requestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    requestId = null;
+  }
+
+  function status(message, tone) {
+    byId('status').textContent = message;
+    byId('status').dataset.tone = tone || 'info';
+  }
+
+  function controls() {
+    ['read-button', 'write-button', 'clear-code', 'toggle-code'].forEach(function (id) { byId(id).disabled = busy; });
+    byId('lookup-button').disabled = busy || !requestId;
+    byId('new-button').disabled = busy || !confirmed;
+    byId('access-form').setAttribute('aria-busy', String(busy));
+    byId('request-result').textContent = requestId || 'ยังไม่มีคำขอ';
+  }
+
+  function validateCredential() {
+    var valid = credential.value.length > 0 && credential.value.length <= 256;
+    credential.setAttribute('aria-invalid', String(!valid));
+    byId('field-error').textContent = valid ? '' : 'กรุณากรอกรหัสเข้าใช้งานของทีม';
+    if (!valid) credential.focus();
+    return valid;
+  }
+
+  function call(method, args, onSuccess) {
+    if (busy || !validateCredential()) return;
+    if (!window.google || !google.script || !google.script.run) {
+      status('หน้านี้ต้องเปิดผ่าน URL เว็บแอพ Apps Script จึงจะทดสอบ Google จริงได้', 'error');
+      return;
+    }
+    busy = true;
+    var current = ++sequence;
+    controls();
+    status('กำลังทดสอบ กรุณารอ…');
+    function settle() {
+      if (current !== sequence) return false;
+      ++sequence;
+      clearTimeout(timer);
+      busy = false;
+      controls();
+      return true;
+    }
+    var timer = setTimeout(function () {
+      if (!settle()) return;
+      status('ยังไม่ทราบผลหลังรอ 20 วินาที หากส่งรายการแล้วให้ตรวจผลคำขอเดิม หรือลองซ้ำด้วยรหัสเดิม', 'error');
+    }, 20000);
+    function failure() {
+      if (!settle()) return;
+      status('ติดต่อบริการไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่ หากส่งรายการแล้วให้ตรวจผลคำขอเดิม', 'error');
+    }
+    try {
+      var runner = google.script.run.withSuccessHandler(function (result) {
+        if (!settle()) return;
+        if (!result || !result.ok) {
+          status(result && result.message ? result.message : 'ไม่พบผลตอบกลับที่ถูกต้อง กรุณาตรวจผลคำขอเดิม', 'error');
+          if (result && result.code === 'AUTH') {
+            credential.setAttribute('aria-invalid', 'true');
+            byId('field-error').textContent = result.message;
+            credential.focus();
+          }
+          return;
+        }
+        onSuccess(result.data);
+        controls();
+      }).withFailureHandler(failure);
+      runner[method].apply(runner, [credential.value].concat(args));
+    } catch (ignored) { failure(); }
+  }
+
+  function showProbe(probe) {
+    confirmed = true;
+    byId('write-result').textContent = 'พบรายการ: ' + probe.probeId;
+  }
+
+  byId('access-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    call('runPocCheck', [], function (data) {
+      byId('read-result').textContent = data.message + ' • ' + data.timeZone;
+      byId('email-result').textContent = data.observedEmail || 'Google ไม่ส่งอีเมลกลับมา • ใช้รหัสทีมเข้าใช้งาน';
+      byId('count-result').textContent = new Intl.NumberFormat('th-TH').format(data.probeCount);
+      byId('time-result').textContent = new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+        timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'medium'
+      }).format(new Date(data.checkedAt));
+      status(data.probeCount === 0 ? 'เชื่อมต่อสำเร็จ ยังไม่มีรายการทดสอบ ลองบันทึกรายการแรกได้' : 'อ่านข้อมูลสำเร็จ สามารถทดสอบการเขียนผ่านเว็บได้');
+    });
+  });
+
+  byId('write-button').addEventListener('click', function () {
+    if (busy || !validateCredential()) return;
+    if (!requestId) {
+      try {
+        var newId = crypto.randomUUID();
+        sessionStorage.setItem(requestKey, newId);
+        requestId = newId;
+      } catch (ignored) {
+        status('เบราว์เซอร์เก็บรหัสคำขอไม่ได้ กรุณาอนุญาตพื้นที่จัดเก็บของเว็บก่อนทดสอบการเขียน', 'error');
+        return;
+      }
+    }
+    controls();
+    call('writePocProbe', [requestId], function (data) {
+      showProbe(data.probe);
+      status(data.repeated ? 'พบคำขอเดิมแล้ว ไม่เพิ่มรายการซ้ำ' : 'บันทึกรายการทดสอบสำเร็จ ไม่มีผลต่อยอดคลัง');
+    });
+  });
+
+  byId('lookup-button').addEventListener('click', function () {
+    if (!requestId) return;
+    call('getPocProbe', [requestId], function (data) {
+      if (data.probe) {
+        showProbe(data.probe);
+        status('พบรายการทดสอบของคำขอนี้แล้ว');
+      } else {
+        confirmed = false;
+        byId('write-result').textContent = 'ยังไม่พบรายการของคำขอนี้';
+        status('ยังไม่พบรายการ ณ เวลาที่ตรวจ อาจยังมีคำขอระหว่างทาง ให้ลองบันทึกซ้ำด้วยรหัสเดิม');
+      }
+    });
+  });
+
+  byId('new-button').addEventListener('click', function () {
+    if (busy || !confirmed) return;
+    try { sessionStorage.removeItem(requestKey); } catch (ignored) {
+      status('ล้างรหัสคำขอเดิมไม่ได้ กรุณาตรวจพื้นที่จัดเก็บของเบราว์เซอร์', 'error');
+      return;
+    }
+    requestId = null;
+    confirmed = false;
+    byId('write-result').textContent = 'ยังไม่ได้ทดสอบ';
+    controls();
+    status('พร้อมสร้างคำขอทดสอบใหม่ รายการก่อนหน้ายังคงอยู่ใน Sheet');
+    byId('write-button').focus();
+  });
+
+  byId('toggle-code').addEventListener('click', function () {
+    var show = credential.type === 'password';
+    credential.type = show ? 'text' : 'password';
+    this.textContent = show ? 'ซ่อนรหัส' : 'แสดงรหัส';
+    this.setAttribute('aria-pressed', String(show));
+  });
+  byId('clear-code').addEventListener('click', function () {
+    credential.value = '';
+    credential.type = 'password';
+    credential.removeAttribute('aria-invalid');
+    byId('field-error').textContent = '';
+    byId('toggle-code').textContent = 'แสดงรหัส';
+    byId('toggle-code').setAttribute('aria-pressed', 'false');
+    status('ล้างรหัสออกจากหน้านี้แล้ว รหัสคำขอเดิมยังอยู่สำหรับตรวจผลภายหลัง');
+    credential.focus();
+  });
+  controls();
+  if (requestId) status('พบรหัสคำขอที่เก็บไว้ กรอกรหัสทีมแล้วตรวจผลคำขอเดิมก่อนเริ่มรายการใหม่');
+}());
+</script>

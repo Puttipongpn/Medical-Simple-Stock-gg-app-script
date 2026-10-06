@@ -1,0 +1,15 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "locale": "th-TH",
+  "canonicalMap": "docs/DESIGN.md",
+  "requiredCapabilities": ["Form", "Scrollbar", "Toast"],
+  "requiredCommands": ["unit", "check"],
+  "commands": {
+    "unit": "npm test",
+    "check": "npm run check"
+  },
+  "evidence": {
+    "failurePaths": "tests/client.test.cjs"
+  }
+}

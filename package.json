@@ -1,0 +1,12 @@
+{
+  "name": "medical-stock-poc",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local checks only; production runs in Google Apps Script",
+  "scripts": {
+    "test": "node --test tests/poc.test.cjs tests/client.test.cjs tests/stock.test.cjs tests/stock-client.test.cjs",
+    "check": "node scripts/check.cjs",
+    "preview:build": "node scripts/preview.cjs"
+  },
+  "engines": { "node": ">=20" }
+}

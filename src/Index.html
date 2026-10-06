@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <?!= include_('Styles'); ?>
+  </head>
+  <body>
+    <main>
+      <noscript>กรุณาเปิด JavaScript เพื่อใช้หน้าทดสอบการเชื่อมต่อ ปุ่มจะพร้อมเมื่อหน้าเว็บโหลดครบ</noscript>
+      <header class="page-header">
+        <p class="eyebrow">คลังอุปกรณ์การแพทย์ <span>PHASE 0</span></p>
+        <h1>ทดสอบการเชื่อมต่อ</h1>
+        <p>ตรวจการเข้าใช้งานและเชื่อมต่อ Google Sheets ก่อนเริ่มพัฒนาระบบคลัง</p>
+      </header>
+      <div class="notice">พื้นที่ทดสอบเท่านั้น • รายการที่สร้างไม่มีผลต่อยอดคลัง</div>
+      <div class="workspace">
+        <section class="panel" aria-labelledby="access-heading">
+          <h2 id="access-heading">เข้าถึงไฟล์ทดสอบ</h2>
+          <p class="muted">ใช้รหัสทีมที่เจ้าของตั้งไว้ในระบบ รหัสนี้ไม่ยืนยันตัวบุคคล</p>
+          <form id="access-form" novalidate>
+            <label for="team-code">รหัสเข้าใช้งานของทีม</label>
+            <div class="secret-field">
+              <input id="team-code" type="password" autocomplete="current-password" maxlength="256"
+                aria-describedby="code-help field-error" required>
+              <button id="toggle-code" type="button" class="secondary" aria-pressed="false" disabled>แสดงรหัส</button>
+            </div>
+            <p id="code-help" class="help">รหัสจะไม่ถูกบันทึกในที่เก็บข้อมูลของเบราว์เซอร์</p>
+            <p id="field-error" class="field-error" aria-live="polite"></p>
+            <button id="read-button" type="submit" class="primary" disabled>ตรวจการเชื่อมต่อ</button>
+          </form>
+          <hr>
+          <h2>ทดสอบการเขียนผ่านเว็บ</h2>
+          <p class="muted">สร้างข้อความทดสอบคงที่ 1 รายการในแท็บ POC_Checks โดยไม่ต้องให้บัญชีที่สองแก้ไข Sheet</p>
+          <div class="actions">
+            <button id="write-button" type="button" class="primary" disabled>บันทึกรายการทดสอบ</button>
+            <button id="lookup-button" type="button" class="secondary" disabled>ตรวจผลคำขอเดิม</button>
+          </div>
+          <p class="help">หากเน็ตหลุด ให้ตรวจผลหรือลองบันทึกซ้ำ ระบบใช้รหัสคำขอเดิมเพื่อป้องกันรายการซ้ำ</p>
+          <button id="new-button" type="button" class="secondary" disabled>เริ่มคำขอทดสอบใหม่</button>
+        </section>
+        <section class="panel results" aria-labelledby="result-heading">
+          <div class="section-title"><h2 id="result-heading">ผลการทดสอบ</h2><span class="tag">ไฟล์ทดสอบ</span></div>
+          <p id="status" role="status" aria-live="polite" aria-atomic="true">ยังไม่ได้ทดสอบ • กรอกรหัสทีมแล้วตรวจการเชื่อมต่อ</p>
+          <dl>
+            <div><dt>อ่านข้อมูลจาก Sheet</dt><dd id="read-result">ยังไม่ได้ทดสอบ</dd></div>
+            <div><dt>อีเมลที่ Google ส่งกลับ</dt><dd id="email-result">ยังไม่ได้ตรวจสอบ</dd></div>
+            <div><dt>จำนวนรายการทดสอบ ณ เวลาที่อ่าน</dt><dd id="count-result">—</dd></div>
+            <div><dt>เวลาตรวจล่าสุด (กรุงเทพฯ / ค.ศ.)</dt><dd id="time-result">—</dd></div>
+            <div><dt>รหัสคำขอปัจจุบัน</dt><dd id="request-result" class="technical">ยังไม่มีคำขอ</dd></div>
+            <div><dt>ผลการเขียน / รหัสรายการ</dt><dd id="write-result" class="technical">ยังไม่ได้ทดสอบ</dd></div>
+          </dl>
+          <p class="help">อีเมลว่างอาจเกิดจากข้อจำกัดของ Google ให้จดผลจากทั้งสองบัญชี การผ่านหน้านี้ยังไม่ใช่ผลตรวจรับระบบคลัง</p>
+          <button id="clear-code" type="button" class="secondary" disabled>ล้างรหัสออกจากหน้านี้</button>
+        </section>
+      </div>
+      <footer>ทดสอบด้วยบัญชีเจ้าของและบัญชีที่สองแยกโปรไฟล์เบราว์เซอร์ • ยังไม่มีการรับเข้า จ่ายออก หรือปรับยอด</footer>
+    </main>
+    <?!= include_('Client'); ?>
+  </body>
+</html>

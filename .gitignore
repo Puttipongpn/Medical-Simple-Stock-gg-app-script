@@ -1,0 +1,13 @@
+.clasp.json
+.clasprc.json
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+artifacts/local-preview.html
+artifacts/screenshots/
+artifacts/clasp-bootstrap/
+artifacts/clasp-standalone/
+artifacts/deployment-state/
+docs/ACCESS_RESULTS.private.md

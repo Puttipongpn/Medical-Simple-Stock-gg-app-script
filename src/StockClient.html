@@ -1,0 +1,96 @@
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)}, items=[], movements=[], busy=false;
+var loaded=false, lastSync=0;
+var pendingKey='medical-stock.pending-movement';
+var reversalKey='medical-stock.pending-reversal', selectedReversalId='';
+function status(message,error){$('status').textContent=message;$('status').dataset.error=error?'true':'false'}
+function call(name,args,done,quiet){if(busy)return;busy=true;document.querySelectorAll('button').forEach(function(b){b.disabled=true});if(!quiet)status('กำลังดำเนินการ…');
+  var runner=google.script.run.withSuccessHandler(function(result){busy=false;document.querySelectorAll('button').forEach(function(b){b.disabled=false});if(!result||!result.ok){if(result&&['INPUT','STOCK','DUPLICATE'].indexOf(result.code)>=0){if(name==='saveMovement')sessionStorage.removeItem(pendingKey);if(name==='reverseMovement')sessionStorage.removeItem(reversalKey)}status(result&&result.message||'ทำรายการไม่สำเร็จ',true);return}done(result.data)}).withFailureHandler(function(){busy=false;document.querySelectorAll('button').forEach(function(b){b.disabled=false});status('เชื่อมต่อไม่สำเร็จ ลองใหม่โดยไม่เปลี่ยนข้อมูล',true)});runner[name].apply(runner,args);}
+function node(tag,text){var e=document.createElement(tag);e.textContent=text;return e}
+function resetItemForm(){
+  $('item-form').reset();
+  $('item-id').value='';
+  $('item-code').value='';
+  $('item-name').value='';
+  $('item-unit').value='';
+  $('item-mode').textContent='กำลังเพิ่มอุปกรณ์ใหม่';
+}
+function applySnapshot(data,message){items=data.items;movements=data.movements;loaded=true;lastSync=Date.now();render();if(message)status(message)}
+function refresh(quiet){call('listStock',[],function(data){applySnapshot(data,quiet?'':'ข้อมูลล่าสุดพร้อมใช้งาน')},quiet)}
+function applyWrite(data,message){if(data.snapshot)applySnapshot(data.snapshot,message);else refresh()}
+function hasPending(){try{return !!(sessionStorage.getItem(pendingKey)||sessionStorage.getItem(reversalKey))}catch(ignored){return false}}
+function refreshIfDue(){if(loaded&&!busy&&document.visibilityState!=='hidden'&&!hasPending()&&Date.now()-lastSync>=30000)refresh(true)}
+setInterval(refreshIfDue,30000);
+document.addEventListener('visibilitychange',refreshIfDue);
+function render(){var q=$('search').value.trim().toLowerCase(),cards=$('balances-list');cards.replaceChildren();items.filter(function(i){return (i.code+' '+i.name).toLowerCase().includes(q)}).forEach(function(i){var c=node('article','');c.className='card';c.append(node('small',i.code),node('b',i.name),node('strong',i.balance+' '+i.unit));cards.append(c)});if(!cards.children.length)cards.append(node('p','ไม่พบอุปกรณ์'));
+  var choice=$('movement-item').value;$('movement-item').replaceChildren();items.filter(function(i){return i.active}).forEach(function(i){var o=node('option',i.code+' — '+i.name+' ('+i.balance+' '+i.unit+')');o.value=i.id;$('movement-item').append(o)});$('movement-item').value=choice;
+  var tbody=$('history-list');tbody.replaceChildren();movements.forEach(function(m){
+    var tr=document.createElement('tr');
+    var typeName=({OPENING:'ยอดเริ่มต้น',RECEIVE:'รับเข้า',ISSUE:'จ่ายออก',REVERSAL:'ยกเลิกรายการ'})[m.type];
+    var detail=m.type==='REVERSAL'?m.detail+' (ยกเลิกรายการ '+m.reversesId.slice(0,8)+')':m.detail;
+    [m.date,m.code+' '+m.name,typeName,(m.delta<0?'-':'+')+m.quantity+' '+m.unit,
+      detail,m.operator].forEach(function(v){tr.append(node('td',v||'—'))});
+    var action=node('td','');
+    if(m.reversed)action.textContent='กลับแล้ว';
+    else if(m.type!=='REVERSAL'){
+      var button=node('button','ยกเลิก');button.type='button';button.className='quiet';
+      button.addEventListener('click',function(){
+        selectedReversalId=m.id;
+        $('reversal-target').textContent='ยกเลิกรายการ '+m.code+' '+m.name+' '+m.quantity+' '+m.unit;
+        $('reversal-form').hidden=false;
+        $('reversal-reason').focus();
+      });
+      action.append(button);
+    }
+    tr.append(action);tbody.append(tr);
+  });
+  var list=$('items-list');list.replaceChildren();items.forEach(function(i){var row=node('div',i.code+' • '+i.name+' • '+i.unit);row.className='item-row';var b=node('button','แก้ไข');b.type='button';b.className='quiet';b.addEventListener('click',function(){$('item-id').value=i.id;$('item-code').value=i.code;$('item-name').value=i.name;$('item-unit').value=i.unit;$('item-mode').textContent='กำลังแก้ไขอุปกรณ์ '+i.code;$('item-code').focus()});row.append(b);list.append(row)})}
+document.querySelectorAll('nav button').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('nav button').forEach(function(x){x.classList.toggle('selected',x===b)});document.querySelectorAll('.view').forEach(function(x){x.hidden=x.id!==b.dataset.view})})});
+$('load').addEventListener('click',function(){refresh(false)});$('search').addEventListener('input',render);$('date').value=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
+var reportToday=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
+$('report-start').value=reportToday.slice(0,7)+'-01';
+$('report-end').value=reportToday;
+$('report-load').addEventListener('click',function(){
+  var start=$('report-start').value,end=$('report-end').value;
+  call('getSummary',[start,end],function(rows){
+    var body=$('summary-list');body.replaceChildren();
+    rows.forEach(function(row){
+      var tr=document.createElement('tr');
+      [row.code+' '+row.name,row.received+' '+row.unit,
+        row.issued+' '+row.unit,row.correction+' '+row.unit,
+        row.closing+' '+row.unit].forEach(function(value){tr.append(node('td',value))});
+      body.append(tr);
+    });
+    if(!rows.length)body.append(node('tr','ยังไม่มีอุปกรณ์'));
+    status('แสดงรายงานตามช่วงวันที่แล้ว');
+  });
+});
+$('item-form').addEventListener('submit',function(e){e.preventDefault();var v={id:$('item-id').value,code:$('item-code').value,name:$('item-name').value,unit:$('item-unit').value};call('saveItem',[v],function(data){resetItemForm();applyWrite(data,'บันทึกอุปกรณ์แล้ว')})});$('item-clear').addEventListener('click',function(){resetItemForm();$('item-code').focus()});
+$('movement-form').addEventListener('submit',function(e){e.preventDefault();var values={itemId:$('movement-item').value,type:$('type').value,quantity:$('quantity').value,date:$('date').value,detail:$('detail').value,operator:$('operator').value};var canonical=JSON.stringify(values),previous;try{previous=JSON.parse(sessionStorage.getItem(pendingKey)||'null')}catch(ignored){}if(previous&&previous.canonical!==canonical){status('มีคำขอเดิมที่ยังไม่ยืนยันผล กรุณากรอกข้อมูลเดิมแล้วลองซ้ำ',true);return}var requestId=previous?previous.id:crypto.randomUUID();try{sessionStorage.setItem(pendingKey,JSON.stringify({id:requestId,canonical:canonical}))}catch(ignored){status('เบราว์เซอร์บันทึกรหัสคำขอไม่ได้',true);return}values.requestId=requestId;call('saveMovement',[values],function(data){sessionStorage.removeItem(pendingKey);$('movement-form').reset();$('date').value=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});applyWrite(data,data.repeated?'พบรายการเดิม ไม่บันทึกซ้ำ':'บันทึกสำเร็จ ยอดคงเหลือ '+data.balance)})});
+$('reversal-cancel').addEventListener('click',function(){$('reversal-form').hidden=true;selectedReversalId='';$('reversal-form').reset()});
+$('reversal-form').addEventListener('submit',function(event){
+  event.preventDefault();
+  if(!selectedReversalId)return;
+  var values={movementId:selectedReversalId,reason:$('reversal-reason').value,
+    operator:$('reversal-operator').value};
+  var canonical=JSON.stringify(values),previous;
+  try{previous=JSON.parse(sessionStorage.getItem(reversalKey)||'null')}catch(ignored){}
+  if(previous&&previous.canonical!==canonical){
+    status('มีคำขอกลับรายการเดิมที่ยังไม่ทราบผล กรุณาลองซ้ำด้วยข้อมูลเดิม',true);return;
+  }
+  values.requestId=previous?previous.id:crypto.randomUUID();
+  try{sessionStorage.setItem(reversalKey,JSON.stringify({id:values.requestId,canonical:canonical}))}
+  catch(ignored){status('เบราว์เซอร์บันทึกรหัสคำขอไม่ได้',true);return}
+  call('reverseMovement',[values],function(data){
+    sessionStorage.removeItem(reversalKey);
+    $('reversal-form').reset();$('reversal-form').hidden=true;selectedReversalId='';
+    applyWrite(data,data.repeated?'พบรายการเดิม ไม่บันทึกซ้ำ':'กลับรายการแล้ว ยอดคงเหลือ '+data.balance);
+  });
+});
+try{if(sessionStorage.getItem(pendingKey))status('มีรายการที่ยังไม่ทราบผล กรอกข้อมูลเดิมแล้วลองบันทึกซ้ำ')}catch(ignored){}
+try{if(sessionStorage.getItem(reversalKey))status('มีคำขอกลับรายการที่ยังไม่ทราบผล เลือกรายการเดิมแล้วลองซ้ำด้วยข้อมูลเดิม')}catch(ignored){}
+refresh(false);
+}());
+</script>
